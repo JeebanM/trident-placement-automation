@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     # Database
     database_url: str = Field(..., env="DATABASE_URL")
 
+    @property
+    def async_database_url(self) -> str:
+        # Railway gives postgresql:// but we need postgresql+asyncpg:// for async driver
+        if self.database_url.startswith("postgres://"):
+            return self.database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        if self.database_url.startswith("postgresql://"):
+            return self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return self.database_url
+
     # AI
     gemini_api_key: str = Field(..., env="GEMINI_API_KEY")
 
