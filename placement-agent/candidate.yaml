@@ -1,0 +1,31 @@
+candidate:
+  name: Jeeban
+  email: jeebanmohanty45@gmail.com
+  branch:
+    - CSE
+    - "Computer Science and Engineering"
+    - "Computer Science"
+    - "CS"
+  degree:
+    - B.Tech
+    - B.E.
+    - BE
+    - BTech
+  graduation_year: 2027
+  cgpa: 8.26
+  active_backlogs: 0
+
+monitoring:
+  urls:
+    - https://trident.ac.in/placementnotice/category/placementnotice/
+  check_interval_minutes: 30
+  # How many posts to inspect from the listing page per run
+  max_posts_per_run: 10
+  request_timeout_seconds: 30
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+notifications:
+  # Send email for ambiguous/review cases with a warning
+  send_review_alerts: true
+  eligible_subject_prefix: "🚨 Placement Alert"
+  review_subject_prefix: "⚠️ Verify Eligibility"
