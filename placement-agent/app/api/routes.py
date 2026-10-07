@@ -46,8 +46,15 @@ async def health_check() -> dict[str, Any]:
 async def run_now() -> dict[str, Any]:
     """
     Manually trigger placement monitoring pipeline.
-    Imports run_pipeline dynamically to prevent circular imports.
+    Disabled in production to avoid Render SMTP blocking.
     """
+    settings = get_settings()
+    if settings.app_env == "production":
+        raise HTTPException(
+            status_code=403,
+            detail="Manual pipeline execution is disabled in production. Trigger the GitHub Actions workflow instead.",
+        )
+        
     try:
         from app.scheduler.pipeline import run_pipeline
 
