@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
     # Scheduler
     check_interval_minutes: int = Field(30, env="CHECK_INTERVAL_MINUTES")
+    enable_internal_scheduler: bool = Field(True, env="ENABLE_INTERNAL_SCHEDULER")
 
     # App
     app_env: str = Field("production", env="APP_ENV")

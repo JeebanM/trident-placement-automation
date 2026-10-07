@@ -243,16 +243,19 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup():
         await init_db()
-        # Start scheduler
-        try:
-            from app.scheduler.scheduler import get_scheduler
+        # Start scheduler conditionally
+        if settings.enable_internal_scheduler:
+            try:
+                from app.scheduler.scheduler import get_scheduler
 
-            scheduler = get_scheduler()
-            scheduler.start()
-            app.state.scheduler = scheduler
-            get_logger(__name__).info("app.startup", env=settings.app_env)
-        except Exception as e:
-            get_logger(__name__).warning("app.startup.scheduler_not_started", error=str(e))
+                scheduler = get_scheduler()
+                scheduler.start()
+                app.state.scheduler = scheduler
+                get_logger(__name__).info("app.startup.scheduler_started", env=settings.app_env)
+            except Exception as e:
+                get_logger(__name__).warning("app.startup.scheduler_not_started", error=str(e))
+        else:
+            get_logger(__name__).info("app.startup.scheduler_disabled", env=settings.app_env)
 
     @app.on_event("shutdown")
     async def shutdown():
