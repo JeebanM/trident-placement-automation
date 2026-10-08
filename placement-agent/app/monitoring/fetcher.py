@@ -9,10 +9,11 @@ import hashlib
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
-from curl_cffi import requests as curl_requests
+import httpx
 from bs4 import BeautifulSoup
 from tenacity import (
     retry,
+    retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
@@ -95,8 +96,14 @@ def _is_application_url(url: str) -> bool:
     return any(p in url.lower() for p in patterns)
 
 
+def _is_retriable_http_error(exc: BaseException) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        if exc.response.status_code in (403, 404):
+            return False
+    return isinstance(exc, (httpx.HTTPError, httpx.TimeoutException))
+
 @retry(
-    retry=retry_if_exception_type((curl_requests.errors.RequestsError,)),
+    retry=retry_if_exception(_is_retriable_http_error),
     wait=wait_exponential(multiplier=1, min=30, max=300),
     stop=stop_after_attempt(3),
     reraise=True,
@@ -115,10 +122,10 @@ async def fetch_listing_page(url: str = BASE_URL) -> list[PostSummary]:
     """
     logger.info("fetch_listing_page.start", url=url)
 
-    async with curl_requests.AsyncSession(
+    async with httpx.AsyncClient(
         headers=HEADERS,
-        timeout=30.0,
-        impersonate="chrome120",
+        timeout=httpx.Timeout(30.0),
+        follow_redirects=True,
     ) as client:
         response = await client.get(url)
         response.raise_for_status()
@@ -182,7 +189,7 @@ async def fetch_listing_page(url: str = BASE_URL) -> list[PostSummary]:
 
 
 @retry(
-    retry=retry_if_exception_type((curl_requests.errors.RequestsError,)),
+    retry=retry_if_exception(_is_retriable_http_error),
     wait=wait_exponential(multiplier=1, min=30, max=300),
     stop=stop_after_attempt(3),
     reraise=True,
@@ -200,10 +207,10 @@ async def fetch_post_detail(post_url: str) -> PostDetail:
     """
     logger.info("fetch_post_detail.start", url=post_url)
 
-    async with curl_requests.AsyncSession(
+    async with httpx.AsyncClient(
         headers=HEADERS,
-        timeout=30.0,
-        impersonate="chrome120",
+        timeout=httpx.Timeout(30.0),
+        follow_redirects=True,
     ) as client:
         response = await client.get(post_url)
         response.raise_for_status()
