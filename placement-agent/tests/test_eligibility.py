@@ -24,22 +24,24 @@ CANDIDATE_PROFILE = {
 def make_extraction(**overrides) -> PlacementExtraction:
     """Helper fixture to create PlacementExtraction with realistic defaults."""
     defaults = dict(
-        company="TCS",
+        company_name="TCS",
         job_role="Software Engineer",
         job_type="Full-time",
-        qualification=["B.Tech"],
-        eligible_branches=["CSE", "IT"],
-        branches_restricted=True,
-        eligibility_raw_text="B.Tech CSE and IT students",
+        eligible_degrees=["CSE", "IT"],
         graduation_years=[2027],
         minimum_cgpa=7.0,
-        backlog_requirement="No active backlogs",
+        backlog_allowed=False,
         salary="7 LPA",
         location=["Bangalore"],
         application_deadline="2026-10-15",
-        application_url=None,
-        notice_url=None,
         confidence=0.85,
+        field_confidences={
+            "company_name": 0.85,
+            "eligible_degrees": 0.85,
+            "minimum_cgpa": 0.85,
+            "graduation_years": 0.85,
+            "application_deadline": 0.85,
+        }
     )
     defaults.update(overrides)
     return PlacementExtraction(**defaults)
@@ -50,7 +52,7 @@ def test_eligible_cse_all_rules_pass():
     extraction = make_extraction()
     result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
 
-    assert result.status == "eligible"
+    assert result.status == "🟢 ELIGIBLE"
     assert result.is_eligible is True
     assert "branch_check" in result.rules_triggered
     assert "graduation_year_check" in result.rules_triggered
@@ -62,12 +64,11 @@ def test_eligible_cse_all_rules_pass():
 def test_ineligible_wrong_branch():
     """Notice restricted to ECE and Mechanical -> ineligible due to branch mismatch."""
     extraction = make_extraction(
-        eligible_branches=["ECE", "Mechanical"],
-        branches_restricted=True,
+        eligible_degrees=["ECE", "Mechanical"],
     )
     result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
 
-    assert result.status == "ineligible"
+    assert result.status == "🔴 NOT ELIGIBLE"
     assert result.is_eligible is False
     assert "branch_check" in result.rules_triggered
     assert "Branch mismatch" in result.reason
@@ -78,7 +79,7 @@ def test_ineligible_wrong_graduation_year():
     extraction = make_extraction(graduation_years=[2026])
     result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
 
-    assert result.status == "ineligible"
+    assert result.status == "🔴 NOT ELIGIBLE"
     assert result.is_eligible is False
     assert "graduation_year_check" in result.rules_triggered
     assert "Graduation year mismatch" in result.reason
@@ -89,62 +90,43 @@ def test_ineligible_cgpa_below_cutoff():
     extraction = make_extraction(minimum_cgpa=9.0)
     result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
 
-    assert result.status == "ineligible"
+    assert result.status == "🔴 NOT ELIGIBLE"
     assert result.is_eligible is False
     assert "cgpa_check" in result.rules_triggered
     assert "CGPA below cutoff" in result.reason
 
 
 def test_no_branch_restriction_eligible():
-    """Notice open to all branches (branches_restricted=False) -> eligible."""
+    """Notice open to all branches (no eligible_degrees) -> eligible."""
     extraction = make_extraction(
-        branches_restricted=False,
-        eligible_branches=[],
+        eligible_degrees=[],
     )
     result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
 
-    assert result.status == "eligible"
+    assert result.status == "🟢 ELIGIBLE"
     assert result.is_eligible is True
     assert "branch_check" in result.rules_triggered
     assert "no_branch_restriction" in result.reason
 
 
 def test_review_on_low_confidence():
-    """Low AI extraction confidence (< 0.4) -> status 'review'."""
-    extraction = make_extraction(confidence=0.3)
+    """Low AI extraction confidence (< 0.4) -> status '🟡 REVIEW REQUIRED'."""
+    extraction = make_extraction(
+        confidence=0.3,
+        field_confidences={
+            "company_name": 0.3,
+            "eligible_degrees": 0.3,
+            "minimum_cgpa": 0.3,
+            "graduation_years": 0.3,
+            "application_deadline": 0.3,
+        }
+    )
     result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
 
-    assert result.status == "review"
+    assert result.status == "🟡 REVIEW REQUIRED"
     assert result.is_eligible is None
     assert "low_confidence_check" in result.rules_triggered
-    assert "Manual review required" in result.reason
-
-
-def test_review_on_restricted_but_no_branches_parsed():
-    """Branch restriction indicated, but branches list empty -> status 'review'."""
-    extraction = make_extraction(
-        branches_restricted=True,
-        eligible_branches=[],
-    )
-    result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
-
-    assert result.status == "review"
-    assert result.is_eligible is None
-    assert "branch_check" in result.rules_triggered
-    assert "manual review required" in result.reason.lower()
-
-
-def test_review_on_ambiguous_backlog():
-    """Ambiguous backlog requirement -> status 'review' for safety."""
-    extraction = make_extraction(
-        backlog_requirement="Candidates with backlogs may apply",
-    )
-    result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
-
-    assert result.status == "review"
-    assert result.is_eligible is None
-    assert "backlog_check" in result.rules_triggered
-    assert "Ambiguous backlog requirement" in result.reason
+    assert "confidence" in result.reason.lower()
 
 
 def test_no_cgpa_skips_cgpa_rule():
@@ -153,7 +135,7 @@ def test_no_cgpa_skips_cgpa_rule():
     result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
 
     assert "cgpa_check" not in result.rules_triggered
-    assert result.status == "eligible"
+    assert result.status == "🟢 ELIGIBLE"
 
 
 def test_no_graduation_year_skips_rule():
@@ -162,23 +144,32 @@ def test_no_graduation_year_skips_rule():
     result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
 
     assert "graduation_year_check" not in result.rules_triggered
-    assert result.status == "eligible"
+    assert result.status == "🟢 ELIGIBLE"
 
 
 def test_branch_case_insensitive():
     """Eligible branch matching is case insensitive (e.g. 'cse' matches candidate 'CSE')."""
-    extraction = make_extraction(eligible_branches=["cse"])
+    extraction = make_extraction(eligible_degrees=["cse"])
     result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
 
-    assert result.status == "eligible"
+    assert result.status == "🟢 ELIGIBLE"
     assert result.is_eligible is True
     assert "branch_check" in result.rules_triggered
 
 
 def test_eligible_confidence_boosted():
     """Deterministic validation passes boost extraction confidence by 0.1 (capped at 1.0)."""
-    extraction = make_extraction(confidence=0.8)
+    extraction = make_extraction(
+        confidence=0.8,
+        field_confidences={
+            "company_name": 0.8,
+            "eligible_degrees": 0.8,
+            "minimum_cgpa": 0.8,
+            "graduation_years": 0.8,
+            "application_deadline": 0.8,
+        }
+    )
     result = check_eligibility(extraction, candidate_config=CANDIDATE_PROFILE)
 
-    assert result.status == "eligible"
+    assert result.status == "🟢 ELIGIBLE"
     assert result.confidence == 0.9

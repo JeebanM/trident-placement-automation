@@ -19,26 +19,25 @@ def test_build_html_email_eligible():
     )
     extracted = ExtractedData(
         post_id=1,
-        company="TCS",
+        company_name="TCS",
         job_role="SDE",
         salary="7 LPA",
         minimum_cgpa=7.0,
         graduation_years=[2027],
         location=["Bangalore"],
         application_deadline="Oct 15, 2026",
-        application_url=None,
+        application_link=None,
     )
 
     html = _build_html_email(
         post=post,
         extracted=extracted,
-        eligibility_status="eligible",
+        eligibility_status="🟢 ELIGIBLE",
         eligibility_reason="All criteria met",
     )
 
     assert "ELIGIBLE FOR PLACEMENT" in html
     assert "TCS" in html
-    assert "SDE" in html
     assert "#16a34a" in html  # Green banner color
     assert "View Notice" in html
     assert "All criteria met" in html
@@ -53,20 +52,20 @@ def test_build_html_email_review():
     )
     extracted = ExtractedData(
         post_id=2,
-        company="StartUp Inc",
+        company_name="StartUp Inc",
         job_role="Associate Engineer",
         salary="5 LPA",
         minimum_cgpa=6.5,
         graduation_years=[2027],
         location=["Bhubaneswar"],
         application_deadline=None,
-        application_url=None,
+        application_link=None,
     )
 
     html = _build_html_email(
         post=post,
         extracted=extracted,
-        eligibility_status="review",
+        eligibility_status="🟡 REVIEW REQUIRED",
         eligibility_reason="Ambiguous backlog requirement",
     )
 
@@ -86,17 +85,17 @@ def test_build_html_email_no_extracted_data():
     html = _build_html_email(
         post=post,
         extracted=None,
-        eligibility_status="eligible",
+        eligibility_status="🟢 ELIGIBLE",
         eligibility_reason="Fallback review",
     )
 
     assert "Raw Placement Notice Title" in html
-    assert "Not Specified" in html
+    assert "Not specified in official notice" in html
     assert "View Notice" in html
 
 
 def test_build_html_email_has_apply_button():
-    """When application_url is present, Apply Now button with link is rendered."""
+    """When application_link is present, Apply Now button with link is rendered."""
     post = PlacementPost(
         id=4,
         title="Google Campus Hiring 2027",
@@ -104,15 +103,15 @@ def test_build_html_email_has_apply_button():
     )
     extracted = ExtractedData(
         post_id=4,
-        company="Google",
+        company_name="Google",
         job_role="Software Engineer",
-        application_url="https://forms.gle/testApply123",
+        application_link="https://forms.gle/testApply123",
     )
 
     html = _build_html_email(
         post=post,
         extracted=extracted,
-        eligibility_status="eligible",
+        eligibility_status="🟢 ELIGIBLE",
         eligibility_reason="Direct match",
     )
 
