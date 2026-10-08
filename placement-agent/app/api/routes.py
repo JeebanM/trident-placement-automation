@@ -74,7 +74,9 @@ async def run_now() -> dict[str, Any]:
         )
 
 
-@router.get("/test-trident")
+root_router = APIRouter()
+
+@root_router.get("/test-trident")
 async def test_trident() -> dict[str, Any]:
     """
     Test connectivity and response from the Trident server directly.
@@ -309,7 +311,9 @@ def create_app() -> FastAPI:
                 get_logger(__name__).warning("app.shutdown.scheduler_failed", error=str(e))
 
     from app.api.routes import router as api_router
+    from app.api.routes import root_router
 
     app.include_router(api_router)
+    app.include_router(root_router)
 
     return app

@@ -21,7 +21,7 @@ def test_test_trident_endpoint(mock_client_class, client):
         
     mock_client_instance.get.return_value = MockResponse()
     
-    response = client.get("/api/test-trident")
+    response = client.get("/test-trident")
     assert response.status_code == 200
     data = response.json()
     assert data["status_code"] == 200
