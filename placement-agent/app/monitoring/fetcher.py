@@ -24,7 +24,7 @@ from app.config.settings import load_candidate_config
 logger = get_logger(__name__)
 
 # ── Constants derived from live inspection of trident.ac.in ──────────────────
-BASE_URL = "https://trident.ac.in/placementnotice/category/placementnotice/"
+BASE_URL = "https://trident.ac.in/placementnotice/"
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "

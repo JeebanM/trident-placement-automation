@@ -222,6 +222,7 @@ async def run_pipeline() -> dict:
 
     except Exception as pipeline_exc:
         logger.error("pipeline.run_pipeline.fatal_error", error=str(pipeline_exc), exc_info=True)
+        raise
 
     stats["duration_seconds"] = round(time.perf_counter() - start_time, 2)
     return stats
