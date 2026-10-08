@@ -74,6 +74,42 @@ async def run_now() -> dict[str, Any]:
         )
 
 
+@router.get("/test-trident")
+async def test_trident() -> dict[str, Any]:
+    """
+    Test connectivity and response from the Trident server directly.
+    """
+    import httpx
+    
+    url = "https://trident.ac.in/placementnotice/"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/129.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    }
+    
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+            
+        return {
+            "status_code": response.status_code,
+            "final_url": str(response.url),
+            "content_length": len(response.content),
+            "server_header": response.headers.get("server", "Not provided"),
+            "content_type": response.headers.get("content-type", "Not provided"),
+            "body_preview": response.text[:200] if response.text else ""
+        }
+    except Exception as e:
+        return {
+            "error": str(e)
+        }
+
+
 @router.get("/posts")
 async def list_posts(
     limit: int = Query(default=20, ge=1, le=100, description="Max posts to return (1-100)"),
