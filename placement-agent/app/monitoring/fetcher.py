@@ -9,7 +9,7 @@ import hashlib
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
-import httpx
+from curl_cffi import requests as curl_requests
 from bs4 import BeautifulSoup
 from tenacity import (
     retry,
@@ -96,7 +96,7 @@ def _is_application_url(url: str) -> bool:
 
 
 @retry(
-    retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
+    retry=retry_if_exception_type((curl_requests.errors.RequestsError,)),
     wait=wait_exponential(multiplier=1, min=30, max=300),
     stop=stop_after_attempt(3),
     reraise=True,
@@ -115,10 +115,10 @@ async def fetch_listing_page(url: str = BASE_URL) -> list[PostSummary]:
     """
     logger.info("fetch_listing_page.start", url=url)
 
-    async with httpx.AsyncClient(
+    async with curl_requests.AsyncSession(
         headers=HEADERS,
-        timeout=httpx.Timeout(30.0),
-        follow_redirects=True,
+        timeout=30.0,
+        impersonate="chrome120",
     ) as client:
         response = await client.get(url)
         response.raise_for_status()
@@ -182,7 +182,7 @@ async def fetch_listing_page(url: str = BASE_URL) -> list[PostSummary]:
 
 
 @retry(
-    retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
+    retry=retry_if_exception_type((curl_requests.errors.RequestsError,)),
     wait=wait_exponential(multiplier=1, min=30, max=300),
     stop=stop_after_attempt(3),
     reraise=True,
@@ -200,10 +200,10 @@ async def fetch_post_detail(post_url: str) -> PostDetail:
     """
     logger.info("fetch_post_detail.start", url=post_url)
 
-    async with httpx.AsyncClient(
+    async with curl_requests.AsyncSession(
         headers=HEADERS,
-        timeout=httpx.Timeout(30.0),
-        follow_redirects=True,
+        timeout=30.0,
+        impersonate="chrome120",
     ) as client:
         response = await client.get(post_url)
         response.raise_for_status()

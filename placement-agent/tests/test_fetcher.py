@@ -99,7 +99,7 @@ async def test_fetch_listing_page_parses_posts():
     mock_resp.text = sample_html
     mock_resp.raise_for_status = MagicMock()
 
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+    with patch("curl_cffi.requests.AsyncSession.get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_resp
         posts = await fetch_listing_page("https://trident.ac.in/placementnotice/category/placementnotice/")
 
@@ -130,7 +130,7 @@ async def test_fetch_post_detail_extracts_links():
     mock_resp.text = sample_detail_html
     mock_resp.raise_for_status = MagicMock()
 
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+    with patch("curl_cffi.requests.AsyncSession.get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_resp
         detail = await fetch_post_detail("https://trident.ac.in/placementnotice/wipro-elite-2027/")
 
