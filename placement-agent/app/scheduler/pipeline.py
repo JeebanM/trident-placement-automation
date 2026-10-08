@@ -183,6 +183,7 @@ async def run_pipeline() -> dict:
                     await asyncio.sleep(2)
 
                 except Exception as exc:
+                    await session.rollback()
                     stats["failed"] += 1
                     logger.error("pipeline.post_iteration.failed", url=summary.url, error=str(exc))
                     
