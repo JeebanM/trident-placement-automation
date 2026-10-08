@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        working-directory: ./placement-agent
+        run: pip install -r requirements.txt
+      - name: Syntax check all Python files
+        working-directory: ./placement-agent
+        run: |
+          find . -name "*.py" -not -path "./.venv/*" -not -path "./__pycache__/*" | xargs python -m py_compile
+          echo "All files passed syntax check"
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+      GEMINI_API_KEY: test_key_for_ci
+      GMAIL_SENDER: ci@test.com
+      GMAIL_APP_PASSWORD: testpassword1234
+      GMAIL_RECIPIENT: ci@test.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        working-directory: ./placement-agent
+        run: pip install -r requirements.txt
+      - name: Run unit tests (no DB required)
+        working-directory: ./placement-agent
+        run: |
+          pytest tests/test_eligibility.py tests/test_fetcher.py tests/test_notifications.py -v --tb=short
+
+  docker-build:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        working-directory: ./placement-agent
+        run: docker build -t placement-agent:ci .
