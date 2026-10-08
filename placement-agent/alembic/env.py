@@ -28,20 +28,26 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
-def get_url() -> str:
-    """Get DATABASE_URL from environment, ensuring asyncpg driver."""
-    url = os.environ.get("DATABASE_URL", config.get_main_option("sqlalchemy.url", ""))
-    # Alembic async requires postgresql+asyncpg:// scheme
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-    elif url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    return url
+def get_url_and_args() -> tuple[str, dict]:
+    """Get DATABASE_URL from environment and connect_args."""
+    raw_url = os.environ.get("DATABASE_URL", config.get_main_option("sqlalchemy.url", ""))
+    # Fallback if no URL is provided (tests, etc)
+    if not raw_url:
+        return "", {}
+        
+    from app.config.settings import get_settings
+    # Temporarily override settings if a custom URL is passed (e.g. from alembic.ini)
+    settings = get_settings()
+    original_url = settings.database_url
+    settings.database_url = raw_url
+    url, connect_args = settings.get_async_database_url_and_args()
+    settings.database_url = original_url
+    return url, connect_args
 
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode (no DB connection, just SQL output)."""
-    url = get_url()
+    url, _ = get_url_and_args()
     # Offline mode needs sync URL — strip asyncpg
     sync_url = url.replace("postgresql+asyncpg://", "postgresql://")
     context.configure(
@@ -63,12 +69,14 @@ def do_run_migrations(connection: Connection) -> None:
 async def run_async_migrations() -> None:
     """Run migrations in 'online' mode using async engine."""
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = get_url()
+    url, connect_args = get_url_and_args()
+    configuration["sqlalchemy.url"] = url
 
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:

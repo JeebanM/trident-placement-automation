@@ -14,12 +14,14 @@ from app.database.models import Base
 
 settings = get_settings()
 
+url, connect_args = settings.get_async_database_url_and_args()
 engine = create_async_engine(
-    settings.async_database_url,
+    url,
     echo=False,
     pool_size=5,
     max_overflow=10,
     pool_pre_ping=True,      # Detect stale connections
+    connect_args=connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(

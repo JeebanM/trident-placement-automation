@@ -24,12 +24,39 @@ class Settings(BaseSettings):
 
     @property
     def async_database_url(self) -> str:
-        # Railway gives postgresql:// but we need postgresql+asyncpg:// for async driver
-        if self.database_url.startswith("postgres://"):
-            return self.database_url.replace("postgres://", "postgresql+asyncpg://", 1)
-        if self.database_url.startswith("postgresql://"):
-            return self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        return self.database_url
+        """Kept for simple usage, returns just the URL."""
+        url, _ = self.get_async_database_url_and_args()
+        return url
+
+    def get_async_database_url_and_args(self) -> tuple[str, dict]:
+        from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+        
+        url = self.database_url
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            
+        parsed = urlparse(url)
+        query_params = dict(parse_qsl(parsed.query))
+        
+        connect_args = {}
+        if "sslmode" in query_params:
+            sslmode = query_params.pop("sslmode")
+            if sslmode == "require":
+                connect_args["ssl"] = "require"
+            elif sslmode in ("prefer", "allow", "verify-ca", "verify-full"):
+                connect_args["ssl"] = sslmode
+                
+        # asyncpg doesn't support channel_binding
+        if "channel_binding" in query_params:
+            query_params.pop("channel_binding")
+                
+        new_query = urlencode(query_params)
+        parsed = parsed._replace(query=new_query)
+        url = urlunparse(parsed)
+            
+        return url, connect_args
 
     # AI
     gemini_api_key: str = Field(..., env="GEMINI_API_KEY")
