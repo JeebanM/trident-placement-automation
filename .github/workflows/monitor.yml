@@ -23,7 +23,8 @@ jobs:
     - name: Check out repository
       uses: actions/checkout@v4
 
-    - name: Set up Python
+    - name: Set up Python (GitHub-hosted runners only)
+      if: runner.environment != 'self-hosted'
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
