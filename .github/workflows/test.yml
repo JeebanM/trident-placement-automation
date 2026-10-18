@@ -38,4 +38,10 @@ jobs:
           pip install pytest
 
       - name: Run test suite
+        env:
+          DATABASE_URL: "postgresql://test:test@localhost:5432/testdb"
+          GEMINI_API_KEY: "test-gemini-key"
+          GMAIL_SENDER: "test@example.com"
+          GMAIL_APP_PASSWORD: "test-password"
+          GMAIL_RECIPIENT: "recipient@example.com"
         run: python -m pytest -v

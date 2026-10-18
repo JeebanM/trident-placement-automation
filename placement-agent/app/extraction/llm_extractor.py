@@ -16,10 +16,18 @@ from app.config.logging_config import get_logger
 from app.config.settings import get_settings
 
 logger = get_logger(__name__)
-settings = get_settings()
 
-genai.configure(api_key=settings.gemini_api_key)
-_model = genai.GenerativeModel("gemini-3.1-flash-lite")
+_model: Optional[genai.GenerativeModel] = None
+
+
+def _get_model() -> genai.GenerativeModel:
+    global _model
+    if _model is None:
+        settings = get_settings()
+        genai.configure(api_key=settings.gemini_api_key)
+        _model = genai.GenerativeModel("gemini-3.1-flash-lite")
+    return _model
+
 
 class PlacementExtraction(BaseModel):
     company_name: Optional[str] = None
@@ -181,9 +189,8 @@ async def extract_placement_data(
     for attempt in range(1, max_retries + 2):
         try:
             prompt = _EXTRACTION_PROMPT.format(notice_title=title, notice_text=truncated_text)
-            logger.info("llm_extractor.attempt", attempt=attempt, url=post_url)
-
-            response = _model.generate_content(prompt)
+            model = _get_model()
+            response = model.generate_content(prompt)
             raw_text = response.text.strip()
             raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
             raw_text = re.sub(r"\s*```$", "", raw_text)

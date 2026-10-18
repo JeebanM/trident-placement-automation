@@ -3,8 +3,16 @@ tests/conftest.py
 ─────────────────
 Shared pytest fixtures for the Trident placement agent test suite.
 """
+import os
 from unittest.mock import AsyncMock, MagicMock
 import pytest
+
+# Ensure required environment variables exist with mock values during test execution
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/testdb")
+os.environ.setdefault("GEMINI_API_KEY", "test-gemini-api-key")
+os.environ.setdefault("GMAIL_SENDER", "test-sender@example.com")
+os.environ.setdefault("GMAIL_APP_PASSWORD", "test-app-password")
+os.environ.setdefault("GMAIL_RECIPIENT", "test-recipient@example.com")
 
 from app.database.models import (
     EligibilityResult,
