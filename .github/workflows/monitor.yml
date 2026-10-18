@@ -44,8 +44,5 @@ jobs:
         GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
         GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         GMAIL_RECIPIENT: ${{ secrets.GMAIL_RECIPIENT }}
-        PROXY_URL: ${{ secrets.PROXY_URL }}
-        HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
-        HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
       run: |
         python run_monitor.py

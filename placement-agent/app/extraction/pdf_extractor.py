@@ -12,7 +12,7 @@ import hashlib
 import io
 from dataclasses import dataclass
 
-import fitz  # PyMuPDF
+import pymupdf
 import httpx
 from tenacity import (
     retry,
@@ -110,7 +110,7 @@ def _extract_pdf_text(raw_bytes: bytes) -> tuple[str, str, int]:
     method is "text" for digital PDFs, "ocr_needed" for scanned/image PDFs.
     """
     try:
-        doc = fitz.open(stream=io.BytesIO(raw_bytes), filetype="pdf")
+        doc = pymupdf.open(stream=io.BytesIO(raw_bytes), filetype="pdf")
         pages_text: list[str] = []
 
         for page_num in range(len(doc)):

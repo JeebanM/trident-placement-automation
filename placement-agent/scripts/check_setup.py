@@ -69,7 +69,7 @@ def main() -> int:
     required_packages = [
         ("httpx", "httpx"),
         ("bs4", "beautifulsoup4"),
-        ("fitz", "PyMuPDF"),
+        ("pymupdf", "PyMuPDF"),
         ("openpyxl", "openpyxl"),
         ("google.generativeai", "google-generativeai"),
         ("pydantic", "pydantic"),

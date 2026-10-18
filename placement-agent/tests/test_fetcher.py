@@ -167,10 +167,55 @@ async def test_fetch_listing_page_via_api():
         assert "Specialist Programmer" in posts[0].snippet
 
 
-def test_get_async_client_respects_proxy(monkeypatch):
-    """get_async_client configures proxy when PROXY_URL environment variable is set."""
-    from app.monitoring.fetcher import get_async_client
-    monkeypatch.setenv("PROXY_URL", "http://user:pass@proxy.example.com:8080")
+def test_get_async_client_headers():
+    """get_async_client configures standard browser headers without proxy."""
+    from app.monitoring.fetcher import get_async_client, HEADERS
     client = get_async_client()
-    assert client._transport is not None
+    assert client.headers.get("User-Agent") == HEADERS["User-Agent"]
+    assert client.headers.get("Accept") == HEADERS["Accept"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_listing_page_stops_on_403_without_fallback():
+    """fetch_listing_page immediately stops on 403 and does not fall back to HTML."""
+    import httpx
+    from app.monitoring.fetcher import fetch_listing_page
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+    mock_resp.headers = {"cf-ray": "a4c8d0627c9a55d0-IAD", "server": "cloudflare"}
+    mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Client error '403 Forbidden'", request=MagicMock(), response=mock_resp
+    )
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_resp
+        with pytest.raises(PermissionError) as exc_info:
+            await fetch_listing_page("https://trident.ac.in/placementnotice/")
+
+        assert "HTTP 403" in str(exc_info.value)
+        # Verify it did NOT make a second request to HTML fallback
+        assert mock_get.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_post_detail_stops_on_403():
+    """fetch_post_detail raises PermissionError on HTTP 403."""
+    import httpx
+    from app.monitoring.fetcher import fetch_post_detail
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+    mock_resp.headers = {"cf-ray": "a4c8d0627c9a55d0-IAD", "server": "cloudflare"}
+    mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Client error '403 Forbidden'", request=MagicMock(), response=mock_resp
+    )
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_resp
+        with pytest.raises(PermissionError) as exc_info:
+            await fetch_post_detail("https://trident.ac.in/placementnotice/test-post/")
+
+        assert "HTTP 403" in str(exc_info.value)
+
 

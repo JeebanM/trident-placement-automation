@@ -107,6 +107,8 @@ def _is_application_url(url: str) -> bool:
 
 
 def _is_retriable_http_error(exc: BaseException) -> bool:
+    if isinstance(exc, PermissionError):
+        return False
     if isinstance(exc, httpx.HTTPStatusError):
         if exc.response.status_code in (403, 404):
             return False
@@ -115,31 +117,28 @@ def _is_retriable_http_error(exc: BaseException) -> bool:
 
 def get_async_client() -> httpx.AsyncClient:
     """
-    Create an AsyncClient with proxy and browser headers configured.
-    Respects PROXY_URL from settings or standard environment variables (HTTPS_PROXY / HTTP_PROXY).
+    Create an AsyncClient with realistic browser headers configured.
     """
-    effective_proxy = None
-    try:
-        from app.config.settings import get_settings
-        settings = get_settings()
-        effective_proxy = getattr(settings, "proxy_url", None)
-    except Exception:
-        pass
+    return httpx.AsyncClient(
+        headers=HEADERS,
+        timeout=httpx.Timeout(30.0),
+        follow_redirects=True,
+    )
 
-    if not effective_proxy:
-        import os
-        effective_proxy = os.getenv("PROXY_URL") or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
 
-    client_kwargs = {
-        "headers": HEADERS,
-        "timeout": httpx.Timeout(30.0),
-        "follow_redirects": True,
-    }
-    if effective_proxy:
-        logger.info("fetcher.using_proxy", proxy=effective_proxy)
-        client_kwargs["proxy"] = effective_proxy
-
-    return httpx.AsyncClient(**client_kwargs)
+def _handle_403_forbidden(url: str, response: httpx.Response, context: str) -> PermissionError:
+    """Log diagnostic information on 403 and stop the fetch operation."""
+    cf_ray = response.headers.get("cf-ray", "N/A")
+    server = response.headers.get("server", "N/A")
+    logger.error(
+        f"{context}.access_denied_403",
+        url=url,
+        cf_ray=cf_ray,
+        server=server,
+        status_code=403,
+        hint="HTTP 403 Forbidden: automated access denied by remote server. Stopping fetch operation.",
+    )
+    return PermissionError(f"Automated access denied by remote server (HTTP 403) at {url}. cf-ray={cf_ray}")
 
 
 async def _fetch_listing_via_api(client: httpx.AsyncClient) -> list[PostSummary]:
@@ -183,7 +182,7 @@ async def fetch_listing_page(url: str = BASE_URL) -> list[PostSummary]:
 
     Trident's WordPress page structure:
       - Primary: WordPress REST API (/wp-json/wp/v2/posts)
-      - Fallback: HTML parsing of article and heading tags
+      - Fallback: HTML parsing of article and heading tags (only on non-403 transient issues)
 
     Returns list of PostSummary sorted newest-first (as the site shows them).
     """
@@ -197,6 +196,10 @@ async def fetch_listing_page(url: str = BASE_URL) -> list[PostSummary]:
                 if api_posts:
                     logger.info("fetch_listing_page.api_success", count=len(api_posts))
                     return api_posts
+            except httpx.HTTPStatusError as http_err:
+                if http_err.response.status_code == 403:
+                    raise _handle_403_forbidden(WP_POSTS_API_URL, http_err.response, "fetch_listing_page.api") from http_err
+                logger.warning("fetch_listing_page.api_http_error", status_code=http_err.response.status_code, error=str(http_err))
             except Exception as api_err:
                 logger.warning("fetch_listing_page.api_fallback", error=str(api_err))
 
@@ -205,16 +208,7 @@ async def fetch_listing_page(url: str = BASE_URL) -> list[PostSummary]:
             response.raise_for_status()
         except httpx.HTTPStatusError as http_err:
             if http_err.response.status_code == 403:
-                cf_ray = http_err.response.headers.get("cf-ray", "N/A")
-                server = http_err.response.headers.get("server", "N/A")
-                logger.error(
-                    "fetch_listing_page.cloudflare_403_blocked",
-                    url=url,
-                    cf_ray=cf_ray,
-                    server=server,
-                    status_code=403,
-                    hint="Cloudflare blocked runner IP. Switch GitHub Actions to a self-hosted runner or configure PROXY_URL.",
-                )
+                raise _handle_403_forbidden(url, http_err.response, "fetch_listing_page.html") from http_err
             raise
 
     soup = BeautifulSoup(response.text, "lxml")
@@ -300,16 +294,7 @@ async def fetch_post_detail(post_url: str) -> PostDetail:
             response.raise_for_status()
         except httpx.HTTPStatusError as http_err:
             if http_err.response.status_code == 403:
-                cf_ray = http_err.response.headers.get("cf-ray", "N/A")
-                server = http_err.response.headers.get("server", "N/A")
-                logger.error(
-                    "fetch_post_detail.cloudflare_403_blocked",
-                    url=post_url,
-                    cf_ray=cf_ray,
-                    server=server,
-                    status_code=403,
-                    hint="Cloudflare blocked runner IP. Switch GitHub Actions to a self-hosted runner or configure PROXY_URL.",
-                )
+                raise _handle_403_forbidden(post_url, http_err.response, "fetch_post_detail") from http_err
             raise
 
     soup = BeautifulSoup(response.text, "lxml")
