@@ -26,14 +26,24 @@ logger = get_logger(__name__)
 
 # ── Constants derived from live inspection of trident.ac.in ──────────────────
 BASE_URL = "https://trident.ac.in/placementnotice/"
+WP_POSTS_API_URL = "https://trident.ac.in/placementnotice/wp-json/wp/v2/posts?per_page=15"
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/129.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://trident.ac.in/",
+    "Sec-Ch-Ua": '"Google Chrome";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 # File extensions to treat as downloadable documents
@@ -102,6 +112,65 @@ def _is_retriable_http_error(exc: BaseException) -> bool:
             return False
     return isinstance(exc, (httpx.HTTPError, httpx.TimeoutException))
 
+
+def get_async_client() -> httpx.AsyncClient:
+    """
+    Create an AsyncClient with proxy and browser headers configured.
+    Respects PROXY_URL from settings or standard environment variables (HTTPS_PROXY / HTTP_PROXY).
+    """
+    effective_proxy = None
+    try:
+        from app.config.settings import get_settings
+        settings = get_settings()
+        effective_proxy = getattr(settings, "proxy_url", None)
+    except Exception:
+        pass
+
+    if not effective_proxy:
+        import os
+        effective_proxy = os.getenv("PROXY_URL") or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
+
+    client_kwargs = {
+        "headers": HEADERS,
+        "timeout": httpx.Timeout(30.0),
+        "follow_redirects": True,
+    }
+    if effective_proxy:
+        logger.info("fetcher.using_proxy", proxy=effective_proxy)
+        client_kwargs["proxy"] = effective_proxy
+
+    return httpx.AsyncClient(**client_kwargs)
+
+
+async def _fetch_listing_via_api(client: httpx.AsyncClient) -> list[PostSummary]:
+    """Fetch recent posts directly via WordPress REST API."""
+    response = await client.get(WP_POSTS_API_URL, headers={"Accept": "application/json"})
+    response.raise_for_status()
+    items = response.json()
+    if not isinstance(items, list):
+        raise ValueError(f"Expected list from WP REST API, got {type(items)}")
+
+    posts: list[PostSummary] = []
+    for item in items:
+        link = item.get("link", "").strip()
+        title_raw = item.get("title", {}).get("rendered", "").strip()
+        if not link or not title_raw:
+            continue
+        title = BeautifulSoup(title_raw, "html.parser").get_text(separator=" ", strip=True)
+        date_str = item.get("date", "").strip()
+        excerpt_raw = item.get("excerpt", {}).get("rendered", "").strip()
+        snippet = BeautifulSoup(excerpt_raw, "html.parser").get_text(separator=" ", strip=True)[:300] if excerpt_raw else title
+        content_hash = _compute_hash(title, snippet, link)
+        posts.append(PostSummary(
+            title=title,
+            url=link,
+            published_date=date_str,
+            snippet=snippet,
+            content_hash=content_hash,
+        ))
+    return posts
+
+
 @retry(
     retry=retry_if_exception(_is_retriable_http_error),
     wait=wait_exponential(multiplier=1, min=30, max=300),
@@ -112,23 +181,41 @@ async def fetch_listing_page(url: str = BASE_URL) -> list[PostSummary]:
     """
     Fetch the placement listing page and extract all post summaries.
 
-    Trident's WordPress page structure (confirmed by live inspection):
-      - Each post is an <article> or an <h4> with a link
-      - Post title is the link text inside the heading
-      - Post date is in a time element or date link
-      - Snippet is the paragraph below the heading
+    Trident's WordPress page structure:
+      - Primary: WordPress REST API (/wp-json/wp/v2/posts)
+      - Fallback: HTML parsing of article and heading tags
 
     Returns list of PostSummary sorted newest-first (as the site shows them).
     """
     logger.info("fetch_listing_page.start", url=url)
 
-    async with httpx.AsyncClient(
-        headers=HEADERS,
-        timeout=httpx.Timeout(30.0),
-        follow_redirects=True,
-    ) as client:
-        response = await client.get(url)
-        response.raise_for_status()
+    async with get_async_client() as client:
+        # If fetching default listing URL, prioritize clean WP REST API
+        if url == BASE_URL:
+            try:
+                api_posts = await _fetch_listing_via_api(client)
+                if api_posts:
+                    logger.info("fetch_listing_page.api_success", count=len(api_posts))
+                    return api_posts
+            except Exception as api_err:
+                logger.warning("fetch_listing_page.api_fallback", error=str(api_err))
+
+        try:
+            response = await client.get(url)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as http_err:
+            if http_err.response.status_code == 403:
+                cf_ray = http_err.response.headers.get("cf-ray", "N/A")
+                server = http_err.response.headers.get("server", "N/A")
+                logger.error(
+                    "fetch_listing_page.cloudflare_403_blocked",
+                    url=url,
+                    cf_ray=cf_ray,
+                    server=server,
+                    status_code=403,
+                    hint="Cloudflare blocked runner IP. Switch GitHub Actions to a self-hosted runner or configure PROXY_URL.",
+                )
+            raise
 
     soup = BeautifulSoup(response.text, "lxml")
     posts: list[PostSummary] = []
@@ -207,13 +294,23 @@ async def fetch_post_detail(post_url: str) -> PostDetail:
     """
     logger.info("fetch_post_detail.start", url=post_url)
 
-    async with httpx.AsyncClient(
-        headers=HEADERS,
-        timeout=httpx.Timeout(30.0),
-        follow_redirects=True,
-    ) as client:
-        response = await client.get(post_url)
-        response.raise_for_status()
+    async with get_async_client() as client:
+        try:
+            response = await client.get(post_url)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as http_err:
+            if http_err.response.status_code == 403:
+                cf_ray = http_err.response.headers.get("cf-ray", "N/A")
+                server = http_err.response.headers.get("server", "N/A")
+                logger.error(
+                    "fetch_post_detail.cloudflare_403_blocked",
+                    url=post_url,
+                    cf_ray=cf_ray,
+                    server=server,
+                    status_code=403,
+                    hint="Cloudflare blocked runner IP. Switch GitHub Actions to a self-hosted runner or configure PROXY_URL.",
+                )
+            raise
 
     soup = BeautifulSoup(response.text, "lxml")
 

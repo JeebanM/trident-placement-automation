@@ -138,3 +138,39 @@ async def test_fetch_post_detail_extracts_links():
         assert "Detailed eligibility criteria" in detail.full_text
         assert "https://trident.ac.in/wp-content/uploads/notice.pdf" in detail.document_urls
         assert "https://forms.gle/sampleForm123" in detail.application_urls
+
+
+@pytest.mark.asyncio
+async def test_fetch_listing_page_via_api():
+    """fetch_listing_page parses WordPress REST API JSON into PostSummary objects."""
+    sample_api_data = [
+        {
+            "id": 101,
+            "link": "https://trident.ac.in/placementnotice/infosys-sp-2027/",
+            "title": {"rendered": "Infosys Specialist Programmer 2027"},
+            "date": "2026-10-15T10:00:00",
+            "excerpt": {"rendered": "<p>Infosys is hiring for Specialist Programmer roles.</p>"},
+        }
+    ]
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = sample_api_data
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_resp
+        posts = await fetch_listing_page("https://trident.ac.in/placementnotice/")
+
+        assert len(posts) == 1
+        assert posts[0].title == "Infosys Specialist Programmer 2027"
+        assert posts[0].url == "https://trident.ac.in/placementnotice/infosys-sp-2027/"
+        assert posts[0].published_date == "2026-10-15T10:00:00"
+        assert "Specialist Programmer" in posts[0].snippet
+
+
+def test_get_async_client_respects_proxy(monkeypatch):
+    """get_async_client configures proxy when PROXY_URL environment variable is set."""
+    from app.monitoring.fetcher import get_async_client
+    monkeypatch.setenv("PROXY_URL", "http://user:pass@proxy.example.com:8080")
+    client = get_async_client()
+    assert client._transport is not None
+

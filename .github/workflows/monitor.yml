@@ -5,11 +5,19 @@ on:
     # Run every 30 minutes
     - cron: '*/30 * * * *'
   workflow_dispatch:
-    # Allows manual triggering from the GitHub Actions tab
+    inputs:
+      runner:
+        description: 'Runner environment (self-hosted or ubuntu-latest)'
+        required: false
+        default: 'self-hosted'
+        type: choice
+        options:
+          - self-hosted
+          - ubuntu-latest
 
 jobs:
   run-monitor:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.inputs.runner || vars.RUNNER_TYPE || 'self-hosted' }}
 
     steps:
     - name: Check out repository
@@ -35,5 +43,8 @@ jobs:
         GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
         GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         GMAIL_RECIPIENT: ${{ secrets.GMAIL_RECIPIENT }}
+        PROXY_URL: ${{ secrets.PROXY_URL }}
+        HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
+        HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
       run: |
         python run_monitor.py

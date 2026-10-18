@@ -22,6 +22,7 @@ from tenacity import (
 )
 
 from app.config.logging_config import get_logger
+from app.monitoring.fetcher import get_async_client
 
 logger = get_logger(__name__)
 
@@ -56,16 +57,7 @@ async def download_and_extract(url: str) -> ExtractedDocument | None:
     logger.info("pdf_extractor.download.start", url=url)
 
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(60.0),
-            follow_redirects=True,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36"
-                )
-            },
-        ) as client:
+        async with get_async_client() as client:
             response = await client.get(url)
             response.raise_for_status()
 

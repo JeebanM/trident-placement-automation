@@ -7,6 +7,8 @@ All secrets come from environment variables — never hardcoded.
 from functools import lru_cache
 from pathlib import Path
 
+from typing import Optional
+
 import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -73,6 +75,9 @@ class Settings(BaseSettings):
     # App
     app_env: str = Field("production", env="APP_ENV")
     log_level: str = Field("INFO", env="LOG_LEVEL")
+
+    # Proxy (Optional, for environments where target portal blocks runner IP)
+    proxy_url: Optional[str] = Field(None, env="PROXY_URL")
 
 
 @lru_cache
